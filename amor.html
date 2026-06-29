@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planeta Eu Te Amo 💗</title>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Playfair+Display:ital@1&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+#wrap{width:100%;max-width:800px;height:100vh;position:relative;overflow:hidden;background:#000;}
+#galaxy-scene,#planet-scene{position:absolute;inset:0;transition:opacity 1s ease;}
+#planet-scene{opacity:0;pointer-events:none;}
+#galaxy-scene.hidden{opacity:0;pointer-events:none;}
+#planet-scene.visible{opacity:1;pointer-events:all;}
+canvas{position:absolute;inset:0;width:100%;height:100%;}
+#hint{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);font-family:'Dancing Script',cursive;color:#ffb3d9;font-size:16px;letter-spacing:2px;z-index:20;white-space:nowrap;opacity:0.75;animation:blink 2.5s ease-in-out infinite;pointer-events:none;}
+@keyframes blink{0%,100%{opacity:0.4;}50%{opacity:1;}}
+#flash{position:absolute;inset:0;background:radial-gradient(circle,#ffe0f5,#fff);opacity:0;pointer-events:none;z-index:100;transition:opacity 0.3s;}
+#planet-ui{position:absolute;inset:0;pointer-events:none;z-index:30;}
+#planet-title{position:absolute;top:16px;left:50%;transform:translateX(-50%);font-family:'Dancing Script',cursive;font-size:28px;font-weight:700;color:#ffe4f5;text-shadow:0 0 20px #ff69b4,0 0 50px #c084fc;white-space:nowrap;letter-spacing:2px;}
+#planet-sub{position:absolute;top:54px;left:50%;transform:translateX(-50%);font-family:'Playfair Display',serif;font-style:italic;color:#f9a8d4;font-size:14px;letter-spacing:3px;white-space:nowrap;opacity:0.8;}
+#back-btn{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(255,105,180,0.15);border:1px solid rgba(255,105,180,0.5);color:#ffe4f5;font-family:'Dancing Script',cursive;font-size:18px;padding:10px 32px;border-radius:24px;cursor:pointer;pointer-events:all;letter-spacing:1px;transition:background 0.2s;}
+#back-btn:hover{background:rgba(255,105,180,0.35);}
+#tap-hint{position:absolute;bottom:62px;left:50%;transform:translateX(-50%);font-family:'Dancing Script',cursive;color:#f9a8d4;font-size:14px;letter-spacing:1px;white-space:nowrap;opacity:0.7;pointer-events:none;animation:blink 2s ease-in-out infinite;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="flash"></div>
+  <div id="galaxy-scene">
+    <canvas id="gc"></canvas>
+  </div>
+  <div id="planet-scene">
+    <canvas id="pc"></canvas>
+    <div id="planet-ui">
+      <div id="planet-title">✦ Planeta Eu Te Amo ✦</div>
+      <div id="planet-sub">um mundo criado só para você</div>
+      <div id="tap-hint">toque no planeta para sentir o amor 💗</div>
+      <button id="back-btn">↩ voltar à galáxia</button>
+    </div>
+  </div>
+  <div id="hint">clique no coração para viajar ✨</div>
+</div>
+<script>
+(function(){
+const wrap=document.getElementById('wrap');
+const W=wrap.offsetWidth||800;
+const H=wrap.offsetHeight||window.innerHeight||620;
+const galaxyEl=document.getElementById('galaxy-scene');
+const planetEl=document.getElementById('planet-scene');
+const flash=document.getElementById('flash');
+const gc=document.getElementById('gc');
+gc.width=W;gc.height=H;
+const gx=gc.getContext('2d');
+const cx=W/2,cy=H/2;
+let gT=0,gRAF,heartClicked=false,heartPulse=0;
+const starField=Array.from({length:320},()=>{
+  const hue=[210,270,300,330,0][Math.floor(Math.random()*5)];
+  return{x:Math.random()*W,y:Math.random()*H,r:Math.random()**2*2.5+0.2,phase:Math.random()*Math.PI*2,spd:Math.random()*0.008+0.002,hue,sat:Math.random()*60};
+});
+const nebulae=[
+  {x:cx-90,y:cy-40,rx:180,ry:90,c:'#9b1fa8',a:0.06},
+  {x:cx+60,y:cy+30,rx:140,ry:70,c:'#c2185b',a:0.05},
+  {x:cx,y:cy-80,rx:120,ry:60,c:'#7b1fa2',a:0.07},
+];
+const ringWords=[
+  {ws:['amor','paixão','carinho','ternura','beijo','abraço'],r:118,sp:0.0007,sz:18,c:'#ff9de2'},
+  {ws:['eternidade','doçura','saudade','te amo','sonho','desejo','magia'],r:200,sp:-0.0005,sz:16,c:'#c084fc'},
+  {ws:['florescer','alma gêmea','coração','afeto','romance','delicadeza','encanto'],r:278,sp:0.00035,sz:14,c:'#f9a8d4'},
+  {ws:['felicidade','júbilo','cumplicidade','meu bem','devoção','luz','infinito'],r:348,sp:-0.00025,sz:13,c:'#a78bfa'},
+];
+const ringWordObjs=[];
+ringWords.forEach((ring,ri)=>{
+  ring.ws.forEach((w,wi)=>{
+    ringWordObjs.push({text:w,ring,baseAngle:(2*Math.PI/ring.ws.length)*wi+ri*1.1});
+  });
+});
+let shootingStar=null;
+setInterval(()=>{shootingStar={x:-20,y:Math.random()*H*0.5,vx:6+Math.random()*4,vy:1+Math.random()*2,life:1};},4000);
+let milkyDrawn=false;
+function drawGalaxy(){
+  gT++;
+  gx.clearRect(0,0,W,H);
+  const bg=gx.createRadialGradient(cx,cy,0,cx,cy,Math.max(W,H)*0.8);
+  bg.addColorStop(0,'#160028');bg.addColorStop(0.4,'#0a0018');bg.addColorStop(1,'#000005');
+  gx.fillStyle=bg;gx.fillRect(0,0,W,H);
+  nebulae.forEach(n=>{
+    const ng=gx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.rx);
+    ng.addColorStop(0,n.c+'22');ng.addColorStop(0.5,n.c+'11');ng.addColorStop(1,'transparent');
+    gx.save();gx.scale(1,n.ry/n.rx);
+    gx.beginPath();gx.arc(n.x,n.y*(n.rx/n.ry),n.rx,0,Math.PI*2);
+    gx.fillStyle=ng;gx.fill();gx.restore();
+  });
+  if(!milkyDrawn){
+    milkyDrawn=true;
+    for(let i=0;i<200;i++){
+      const angle=Math.random()*Math.PI*2;
+      const dist=80+Math.random()*220;
+      const sx=cx+Math.cos(angle)*dist*2.2,sy=cy+Math.sin(angle)*dist*0.5;
+      gx.beginPath();gx.arc(sx,sy,Math.random()*0.8+0.1,0,Math.PI*2);
+      gx.fillStyle=`rgba(200,170,255,${Math.random()*0.3+0.05})`;gx.fill();
+    }
+  }
+  starField.forEach(s=>{
+    s.phase+=s.spd;
+    const al=0.3+0.7*Math.abs(Math.sin(s.phase));
+    gx.beginPath();gx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    gx.fillStyle=`hsla(${s.hue},${s.sat}%,95%,${al})`;gx.fill();
+    if(s.r>1.5){
+      gx.strokeStyle=`hsla(${s.hue},80%,90%,${al*0.4})`;
+      gx.lineWidth=s.r*2.5;
+      gx.beginPath();gx.moveTo(s.x-s.r*3,s.y);gx.lineTo(s.x+s.r*3,s.y);gx.stroke();
+      gx.beginPath();gx.moveTo(s.x,s.y-s.r*3);gx.lineTo(s.x,s.y+s.r*3);gx.stroke();
+    }
+  });
+  if(shootingStar){
+    shootingStar.x+=shootingStar.vx;shootingStar.y+=shootingStar.vy;shootingStar.life-=0.025;
+    if(shootingStar.life>0){
+      gx.beginPath();gx.moveTo(shootingStar.x,shootingStar.y);
+      gx.lineTo(shootingStar.x-shootingStar.vx*10,shootingStar.y-shootingStar.vy*10);
+      gx.strokeStyle=`rgba(255,220,255,${shootingStar.life})`;gx.lineWidth=1.5;gx.stroke();
+    }else shootingStar=null;
+  }
+  ringWords.forEach(ring=>{
+    gx.beginPath();gx.ellipse(cx,cy,ring.r,ring.r*0.42,0,0,Math.PI*2);
+    gx.strokeStyle='rgba(200,150,255,0.08)';gx.lineWidth=0.5;gx.stroke();
+  });
+  ringWordObjs.forEach(obj=>{
+    const a=obj.baseAngle+obj.ring.sp*gT;
+    const wx=cx+Math.cos(a)*obj.ring.r;
+    const wy=cy+Math.sin(a)*obj.ring.r*0.42;
+    const depth=(Math.sin(a)+1)/2;
+    gx.save();
+    gx.globalAlpha=0.25+0.75*depth;
+    gx.font=`${obj.ring.sz*(0.7+0.3*depth)}px 'Dancing Script',cursive`;
+    gx.fillStyle=obj.ring.c;
+    gx.shadowColor=obj.ring.c;gx.shadowBlur=8*depth;
+    gx.textAlign='center';gx.textBaseline='middle';
+    gx.fillText(obj.text,wx,wy);
+    gx.restore();
+  });
+  const cg=gx.createRadialGradient(cx,cy,0,cx,cy,90);
+  cg.addColorStop(0,'rgba(255,100,180,0.18)');cg.addColorStop(0.5,'rgba(180,50,200,0.08)');cg.addColorStop(1,'transparent');
+  gx.fillStyle=cg;gx.beginPath();gx.arc(cx,cy,90,0,Math.PI*2);gx.fill();
+  heartPulse+=0.05;
+  const hs=heartClicked?0:(1+0.12*Math.sin(heartPulse));
+  gx.save();
+  gx.translate(cx,cy);
+  gx.font=`${58*hs}px serif`;
+  gx.textAlign='center';gx.textBaseline='middle';
+  gx.shadowColor='#ff69b4';gx.shadowBlur=30;
+  gx.fillText('💗',0,0);
+  gx.restore();
+  gRAF=requestAnimationFrame(drawGalaxy);
+}
+drawGalaxy();
+gc.addEventListener('click',e=>{
+  const rect=gc.getBoundingClientRect();
+  const mx=(e.clientX-rect.left)*(W/rect.width);
+  const my=(e.clientY-rect.top)*(H/rect.height);
+  if(Math.hypot(mx-cx,my-cy)<45){
+    heartClicked=true;
+    flash.style.opacity='1';
+    setTimeout(()=>{
+      galaxyEl.classList.add('hidden');
+      planetEl.classList.add('visible');
+      cancelAnimationFrame(gRAF);
+      startPlanet();
+      setTimeout(()=>{flash.style.opacity='0';},120);
+    },300);
+  }
+});
+const heartParticles=[];
+let pRAF;
+function startPlanet(){
+  const pc=document.getElementById('pc');
+  pc.width=W;pc.height=H;
+  const px=pc.getContext('2d');
+  const pcx=W/2,pcy=H/2;
+  const PLANET_R=Math.min(W,H)*0.14;
+  const ORBIT_RX=PLANET_R*2.1,ORBIT_RY=PLANET_R*0.67;
+  let pT=0;
+  const orbitHearts=[];
+  function spawnOrbitHearts(){
+    const count=8+Math.floor(Math.random()*6);
+    for(let i=0;i<count;i++){
+      orbitHearts.push({
+        angle:Math.random()*Math.PI*2,
+        speed:(Math.random()<0.5?1:-1)*(0.018+Math.random()*0.014),
+        sym:['💕','💗','💖','❤️','💓','💝'][Math.floor(Math.random()*6)],
+        sz:14+Math.random()*18,life:1,decay:0.004+Math.random()*0.004,
+        rx:ORBIT_RX+((Math.random()-0.5)*30),ry:ORBIT_RY+((Math.random()-0.5)*12),
+      });
+    }
+  }
+  pc.addEventListener('click',e=>{
+    const rect=pc.getBoundingClientRect();
+    const mx=(e.clientX-rect.left)*(W/rect.width);
+    const my=(e.clientY-rect.top)*(H/rect.height);
+    if(Math.hypot(mx-pcx,my-pcy)<PLANET_R+20){
+      spawnOrbitHearts();
+      for(let i=0;i<12;i++){
+        heartParticles.push({
+          x:pcx,y:pcy-PLANET_R,
+          vx:(Math.random()-0.5)*5,vy:-(2+Math.random()*4),
+          sym:['💕','✨','💖','🌸','⭐'][Math.floor(Math.random()*5)],
+          sz:10+Math.random()*14,life:1,decay:0.018
+        });
+      }
+    }
+  });
+  const pWords=[
+    {t:'eu te amo',c:'#ff6eb4',sz:28,ox:pcx,oy:pcy-PLANET_R*1.8,ph:0,spd:0.007},
+    {t:'para sempre',c:'#f9a8d4',sz:20,ox:pcx-PLANET_R*1.4,oy:pcy-PLANET_R*1.1,ph:1,spd:0.006},
+    {t:'meu universo',c:'#c084fc',sz:18,ox:pcx+PLANET_R*1.3,oy:pcy-PLANET_R,ph:2,spd:0.008},
+    {t:'infinito',c:'#e879f9',sz:22,ox:pcx-PLANET_R*1.6,oy:pcy+PLANET_R*0.3,ph:0.5,spd:0.005},
+    {t:'só você',c:'#ff9de2',sz:24,ox:pcx+PLANET_R*1.5,oy:pcy+PLANET_R*0.4,ph:1.5,spd:0.007},
+    {t:'minha estrela',c:'#fda4af',sz:16,ox:pcx-PLANET_R,oy:pcy+PLANET_R*1.4,ph:3,spd:0.006},
+    {t:'devoção',c:'#a78bfa',sz:19,ox:pcx+PLANET_R,oy:pcy+PLANET_R*1.5,ph:2.2,spd:0.009},
+    {t:'luz da minha vida',c:'#f472b6',sz:15,ox:pcx,oy:pcy+PLANET_R*2.1,ph:1.2,spd:0.005},
+  ];
+  let bgDrawn=false;
+  function drawPlanet(){
+    pT++;
+    px.clearRect(0,0,W,H);
+    const bg=px.createRadialGradient(pcx,pcy,0,pcx,pcy,Math.max(W,H));
+    bg.addColorStop(0,'#1a0035');bg.addColorStop(0.5,'#0a0020');bg.addColorStop(1,'#020008');
+    px.fillStyle=bg;px.fillRect(0,0,W,H);
+    if(!bgDrawn){
+      bgDrawn=true;
+      for(let i=0;i<280;i++){
+        const sx=Math.random()*W,sy=Math.random()*H,sr=Math.random()*1.2+0.1;
+        px.beginPath();px.arc(sx,sy,sr,0,Math.PI*2);
+        px.fillStyle=`rgba(220,200,255,${Math.random()*0.5+0.1})`;px.fill();
+      }
+    }
+    px.save();px.setLineDash([6,8]);
+    px.beginPath();px.ellipse(pcx,pcy,ORBIT_RX,ORBIT_RY,0,Math.PI,Math.PI*2);
+    px.strokeStyle='rgba(255,160,220,0.2)';px.lineWidth=1;px.stroke();px.restore();
+    orbitHearts.forEach(h=>{
+      h.angle+=h.speed;h.life-=h.decay;
+      const hx=pcx+Math.cos(h.angle)*h.rx,hy=pcy+Math.sin(h.angle)*h.ry;
+      if(Math.sin(h.angle)<0&&h.life>0){
+        px.globalAlpha=h.life*(0.5+0.5*Math.abs(Math.sin(h.angle)));
+        px.font=`${h.sz}px serif`;px.textAlign='center';px.textBaseline='middle';
+        px.fillText(h.sym,hx,hy);px.globalAlpha=1;
+      }
+    });
+    const pglow=px.createRadialGradient(pcx,pcy,PLANET_R*0.3,pcx,pcy,PLANET_R*2.2);
+    pglow.addColorStop(0,'rgba(255,100,180,0.25)');pglow.addColorStop(0.5,'rgba(180,50,200,0.1)');pglow.addColorStop(1,'transparent');
+    px.fillStyle=pglow;px.beginPath();px.arc(pcx,pcy,PLANET_R*2.2,0,Math.PI*2);px.fill();
+    const pgrad=px.createRadialGradient(pcx-PLANET_R*0.3,pcy-PLANET_R*0.3,PLANET_R*0.1,pcx,pcy,PLANET_R);
+    pgrad.addColorStop(0,'#ff9de2');pgrad.addColorStop(0.3,'#d4537e');pgrad.addColorStop(0.7,'#7b1560');pgrad.addColorStop(1,'#2d0030');
+    px.beginPath();px.arc(pcx,pcy,PLANET_R,0,Math.PI*2);px.fillStyle=pgrad;px.fill();
+    px.save();px.beginPath();px.arc(pcx,pcy,PLANET_R,0,Math.PI*2);px.clip();
+    for(let i=0;i<5;i++){
+      const sa=i*1.3+pT*0.002;
+      const sx=pcx+Math.cos(sa)*40,sy=pcy+Math.sin(sa)*20;
+      const lg=px.createRadialGradient(sx,sy,0,sx,sy,45);
+      lg.addColorStop(0,'rgba(255,150,200,0.15)');lg.addColorStop(1,'transparent');
+      px.fillStyle=lg;px.fillRect(pcx-PLANET_R,pcy-PLANET_R,PLANET_R*2,PLANET_R*2);
+    }
+    const surfaceSyms=['❤️','💕','🌸','💗'];
+    for(let i=0;i<6;i++){
+      const sa=i*1.05+pT*0.003,sr=PLANET_R*0.55;
+      px.font=`${11+i%3*4}px serif`;
+      px.globalAlpha=0.35+0.2*Math.sin(pT*0.04+i);
+      px.fillText(surfaceSyms[i%4],pcx+Math.cos(sa)*sr,pcy+Math.sin(sa)*sr*0.5);
+    }
+    px.globalAlpha=1;px.restore();
+    px.beginPath();px.arc(pcx,pcy,PLANET_R,0,Math.PI*2);
+    px.strokeStyle='rgba(255,180,230,0.4)';px.lineWidth=3;px.stroke();
+    px.save();px.translate(pcx,pcy);px.scale(1,0.22);
+    [{r1:PLANET_R+12,r2:PLANET_R+28,c:'rgba(255,160,210,0.35)'},
+     {r1:PLANET_R+32,r2:PLANET_R+44,c:'rgba(200,120,255,0.25)'},
+     {r1:PLANET_R+50,r2:PLANET_R+56,c:'rgba(255,180,220,0.15)'}].forEach(rg=>{
+      const rgrad=px.createRadialGradient(0,0,rg.r1,0,0,rg.r2);
+      rgrad.addColorStop(0,rg.c);rgrad.addColorStop(1,'transparent');
+      px.beginPath();px.arc(0,0,rg.r2,0,Math.PI*2);px.fillStyle=rgrad;px.fill();
+    });
+    px.restore();
+    px.save();px.setLineDash([6,8]);
+    px.beginPath();px.ellipse(pcx,pcy,ORBIT_RX,ORBIT_RY,0,0,Math.PI);
+    px.strokeStyle='rgba(255,160,220,0.45)';px.lineWidth=1.2;px.stroke();px.restore();
+    orbitHearts.forEach(h=>{
+      const hx=pcx+Math.cos(h.angle)*h.rx,hy=pcy+Math.sin(h.angle)*h.ry;
+      if(Math.sin(h.angle)>=0&&h.life>0){
+        px.globalAlpha=h.life*(0.6+0.4*Math.abs(Math.sin(h.angle)));
+        px.font=`${h.sz}px serif`;px.textAlign='center';px.textBaseline='middle';
+        px.fillText(h.sym,hx,hy);px.globalAlpha=1;
+      }
+    });
+    for(let i=orbitHearts.length-1;i>=0;i--){if(orbitHearts[i].life<=0)orbitHearts.splice(i,1);}
+    heartParticles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.05;p.life-=p.decay;});
+    for(let i=heartParticles.length-1;i>=0;i--){
+      const p=heartParticles[i];
+      if(p.life<=0){heartParticles.splice(i,1);continue;}
+      px.globalAlpha=p.life;px.font=`${p.sz}px serif`;px.textAlign='center';px.fillText(p.sym,p.x,p.y);
+    }
+    px.globalAlpha=1;
+    pWords.forEach(w=>{
+      const fx=w.ox+Math.cos(w.ph+pT*w.spd*0.7)*14;
+      const fy=w.oy+Math.sin(w.ph+pT*w.spd)*10;
+      px.globalAlpha=0.55+0.45*Math.sin(w.ph+pT*w.spd*1.2);
+      px.font=`${w.sz}px 'Dancing Script',cursive`;
+      px.fillStyle=w.c;px.textAlign='center';px.textBaseline='middle';
+      px.shadowColor=w.c;px.shadowBlur=10;
+      px.fillText(w.t,fx,fy);px.shadowBlur=0;
+    });
+    px.globalAlpha=1;
+    pRAF=requestAnimationFrame(drawPlanet);
+  }
+  drawPlanet();
+}
+document.getElementById('back-btn').addEventListener('click',()=>{
+  flash.style.opacity='1';
+  setTimeout(()=>{
+    cancelAnimationFrame(pRAF);
+    heartParticles.length=0;
+    planetEl.classList.remove('visible');
+    galaxyEl.classList.remove('hidden');
+    heartClicked=false;
+    milkyDrawn=false;
+    drawGalaxy();
+    setTimeout(()=>{flash.style.opacity='0';},120);
+  },280);
+});
+})();
+</script>
+</body>
+</html>
